@@ -442,7 +442,7 @@ local function build_main_menu()
     
     local menu_data = {
         type = "iptv_menu",
-        title = "IPTV 选台",
+        title = "IPTV",
         items = items,
         anchor_x = "left",
         anchor_offset = 20
