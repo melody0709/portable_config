@@ -5,6 +5,12 @@
 
 local mp = require 'mp'
 local utils = require 'mp.utils'
+local opt = require 'mp.options'
+
+local options = {
+    epg_download_url = ""
+}
+opt.read_options(options)
 
 local state = {
     m3u_path = "",
@@ -270,12 +276,15 @@ local function parse_m3u(path)
     if not content then return false end
     state.groups = {}
     state.group_names = {}
-    state.epg_url = ""
+    state.epg_url = options.epg_download_url
+    if state.epg_url ~= "" then
+        mp.msg.info("使用配置的 EPG 下载连接: " .. state.epg_url)
+    end
     local current_info = {}
     for line in content:gmatch("([^\r\n]+)") do
         if line:match("^#EXTM3U") then
             local epg = line:match('x%-tvg%-url="([^"]+)"')
-            if epg then state.epg_url = epg end
+            if epg and state.epg_url == "" then state.epg_url = epg end
         elseif line:match("^#EXTINF") then
             current_info = {
                 tvg_id = line:match('tvg%-id="([^"]+)"') or "",
