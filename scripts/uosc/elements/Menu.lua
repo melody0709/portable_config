@@ -665,15 +665,9 @@ function Menu:activate_selected_item(shortcut, is_pointer)
 	local menu = self.current
 	local item = menu.items[menu.selected_index]
 	if item then
-		-- Is submenu
-		if item.items then
-			if not self.mouse_nav then
-				self:select_index(1, item.id)
-			end
-			self:activate_menu(item.id)
-			self:tween(self.offset_x + menu.width / 2, 0, function(offset) self:set_offset_x(offset) end)
-			self.opacity = 1 -- in case tween above canceled fade in animation
-		else
+		-- 优先执行 value（如果存在），否则展开子菜单
+		if item.value then
+			-- 有 value：执行命令（同时保留子菜单可展开功能）
 			local actions = item.actions or menu.item_actions
 			local action = actions and actions[menu.action_index]
 			self.callback({
@@ -689,6 +683,14 @@ function Menu:activate_selected_item(shortcut, is_pointer)
 				shift = shortcut and shortcut.shift or false,
 				menu_id = menu.id,
 			})
+		elseif item.items then
+			-- 无 value 但有子菜单：展开子菜单
+			if not self.mouse_nav then
+				self:select_index(1, item.id)
+			end
+			self:activate_menu(item.id)
+			self:tween(self.offset_x + menu.width / 2, 0, function(offset) self:set_offset_x(offset) end)
+			self.opacity = 1 -- in case tween above canceled fade in animation
 		end
 	end
 end
@@ -1443,6 +1445,7 @@ function Menu:render()
 		})
 
 		if is_parent then
+			-- 父菜单背景点击：仅在没有具体项被点击时收起子菜单
 			cursor:zone('primary_down', bg_rect, self:create_action(function() self:slide_in_menu(menu.id, x) end))
 		end
 
@@ -1686,6 +1689,29 @@ function Menu:render()
 					opacity = menu_opacity * (item.muted and 0.5 or 1),
 					clip = clip,
 				})
+			end
+
+			-- 父菜单项点击处理：悬停时点击可执行 value
+			if is_parent and is_selected and item.value then
+				cursor:zone('primary_down', item_rect_hitbox, self:create_action(function(shortcut)
+					-- 保存当前菜单状态，以便回调时使用
+					local target_menu = menu
+					local target_index = index
+					-- 直接回调，不切换菜单
+					self.callback({
+						type = 'activate',
+						index = target_index,
+						value = item.value,
+						is_pointer = true,
+						action = nil,
+						keep_open = item.keep_open or menu.keep_open,
+						modifiers = shortcut and shortcut.modifiers or nil,
+						alt = shortcut and shortcut.alt or false,
+						ctrl = shortcut and shortcut.ctrl or false,
+						shift = shortcut and shortcut.shift or false,
+						menu_id = menu.id,
+					})
+				end))
 			end
 		end
 

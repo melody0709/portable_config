@@ -1,6 +1,6 @@
 --[[
-  mpv + uosc 5.12 IPTV 脚本 V5.1 (修复图标杂点问题)
-  修复：移除远程 URL 图标，避免 HTTP:// 文本泄漏到菜单
+  mpv + uosc 5.12 IPTV 脚本 V5.2
+  重构：三级滑动菜单结构 - 分组 > 频道 > EPG回看
 ]]
 
 local mp = require 'mp'
@@ -186,31 +186,16 @@ local function parse_m3u(path)
     return true
 end
 
--- ==================== 菜单构建（修复杂点问题） ====================
+-- ==================== 构建三级菜单：分组 > 频道 > EPG ====================
 
-local function build_epg_menu()
-    if not state.current_channel then
-        mp.osd_message("请先播放一个频道", 3)
-        return nil
-    end
-    local ch = state.current_channel
-    local items = {}
-    table.insert(items, {
-        title = ch.name,
-        selectable = false,
-        bold = true,
-        align = "center",
-        icon = "tv"
-    })
-    table.insert(items, {
-        title = "返回直播",
-        value = {"loadfile", ch.url},
-        icon = "play_arrow",
-        bold = true
-    })
-    table.insert(items, {title = "节目单", selectable = false, muted = true, italic = true})
-    
+-- 为单个频道构建 EPG 回看子菜单
+local function build_channel_epg_items(ch)
+    local epg_items = {}
     local epg_list = state.epg_data[ch.tvg_id]
+    
+    -- 分隔线
+    table.insert(epg_items, {title = "节目单", selectable = false, muted = true, italic = true})
+    
     if epg_list and #epg_list > 0 then
         for _, prog in ipairs(epg_list) do
             local display_title = prog.display_start .. " " .. prog.title
@@ -218,14 +203,14 @@ local function build_epg_menu()
                 local catchup_url = ch.catchup
                 catchup_url = catchup_url:gsub("%${%(b%)yyyyMMddHHmmss|UTC%}", prog.start_utc)
                 catchup_url = catchup_url:gsub("%${%(e%)yyyyMMddHHmmss|UTC%}", prog.end_utc)
-                table.insert(items, {
+                table.insert(epg_items, {
                     title = display_title,
                     value = {"loadfile", catchup_url},
                     hint = "回看",
                     icon = "history"
                 })
             else
-                table.insert(items, {
+                table.insert(epg_items, {
                     title = display_title,
                     selectable = false,
                     muted = true
@@ -233,7 +218,7 @@ local function build_epg_menu()
             end
         end
     else
-        table.insert(items, {
+        table.insert(epg_items, {
             title = "(暂无节目单)",
             selectable = false,
             muted = true,
@@ -241,20 +226,16 @@ local function build_epg_menu()
         })
     end
     
-    return {
-        type = "iptv_epg_menu",
-        title = "回看 / 节目单",
-        items = items,
-        anchor_x = "left",
-        anchor_offset = 20
-    }
+    return epg_items
 end
 
+-- 构建主菜单（三级嵌套结构）
 local function build_main_menu()
     if not state.is_loaded then
         mp.osd_message("请先播放 M3U 文件！", 3)
         return nil
     end
+    
     local items = {}
     
     for _, group_name in ipairs(state.group_names) do
@@ -262,13 +243,27 @@ local function build_main_menu()
         local channel_items = {}
         
         for _, ch in ipairs(channels) do
-            -- 关键修复：不使用 ch.logo（远程URL），避免显示 HTTP:// 杂点
-            table.insert(channel_items, {
-                title = ch.name,  -- 只显示频道名，干净无杂点
-                value = {"loadfile", ch.url},
-                icon = "live_tv",  -- 统一使用 Material Icon，不使用远程图片URL
-                hint = state.epg_data[ch.tvg_id] and "EPG" or ""  -- 文字提示，不用emoji
-            })
+            -- 判断频道是否有 EPG 回看功能
+            local has_epg = state.epg_data[ch.tvg_id] and #state.epg_data[ch.tvg_id] > 0
+            local has_catchup = ch.catchup ~= ""
+            
+            if has_epg and has_catchup then
+                -- 有回看功能：同时支持直接播放和 EPG 子菜单
+                table.insert(channel_items, {
+                    title = ch.name,
+                    value = {"loadfile", ch.url},  -- 点击直接播放
+                    icon = "live_tv",
+                    hint = "EPG ▶",
+                    items = build_channel_epg_items(ch)  -- 右侧展开 EPG 子菜单
+                })
+            else
+                -- 无回看功能：频道直接播放
+                table.insert(channel_items, {
+                    title = ch.name,
+                    value = {"loadfile", ch.url},
+                    icon = "live_tv"
+                })
+            end
         end
         
         table.insert(items, {
@@ -276,46 +271,29 @@ local function build_main_menu()
             hint = #channels .. " 频道",
             icon = "folder",
             bold = true,
-            items = channel_items
+            items = channel_items  -- 嵌套频道列表
         })
     end
     
-    -- 底部分隔和EPG入口
-    table.insert(items, {title = "", selectable = false}) 
-    table.insert(items, {
-        title = "查看当前频道节目单 (F9)",
-        value = {"script-binding", "iptv/show-epg"},
-        icon = "schedule",
-        bold = true
-    })
-    
     return {
-        type = "iptv_main_menu",
-        title = "IPTV 直播源",
+        type = "iptv_menu",
+        title = "IPTV 选台",
         items = items,
-        anchor_x = "left",      -- 菜单左对齐
-        anchor_offset = 20      -- 左边距20像素
+        anchor_x = "left",
+        anchor_offset = 20
     }
 end
 
 -- ==================== 交互命令 ====================
 
-function show_main_menu()
+function show_iptv_menu()
     local menu_data = build_main_menu()
     if menu_data then
         mp.commandv("script-message-to", "uosc", "open-menu", utils.format_json(menu_data))
     end
 end
 
-function show_epg()
-    local menu_data = build_epg_menu()
-    if menu_data then
-        mp.commandv("script-message-to", "uosc", "open-menu", utils.format_json(menu_data))
-    end
-end
-
-mp.add_key_binding("F8", "show-iptv-menu", show_main_menu)
-mp.add_key_binding("F9", "show-epg", show_epg)
+mp.add_key_binding("F8", "show-iptv-menu", show_iptv_menu)
 
 -- 跟踪当前播放的频道
 mp.observe_property("path", "string", function(name, path)
@@ -343,9 +321,11 @@ mp.observe_property("path", "string", function(name, path)
         end
         mp.osd_message("解析 M3U...", 2)
         if parse_m3u(clean_path) then
-            mp.osd_message("IPTV 已加载！F8:选台 F9:回看", 4)
+            mp.osd_message("IPTV 已加载！F8:选台菜单", 4)
         end
     end
 end)
 
-mp.msg.info("IPTV 脚本已加载: F8=选台菜单 F9=EPG回看")
+mp.msg.info("IPTV 脚本已加载: F8=三级选台菜单 (分组 > 频道 > EPG)")
+
+menu_expand_on_hover=no
