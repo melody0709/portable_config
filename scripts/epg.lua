@@ -46,6 +46,23 @@ local function current_utc_string()
     return os.date("!%Y%m%d%H%M%S")
 end
 
+-- 通用的时间参数替换函数，支持多种格式
+local function replace_catchup_time_params(catchup_url, start_utc, end_utc)
+    -- 1. 标准回看模板（OK影视等）：${utc:yyyyMMddHHmmss} 和 ${utcend:yyyyMMddHHmmss}
+    catchup_url = catchup_url:gsub("%${(utc):yyyyMMddHHmmss%}", start_utc)
+    catchup_url = catchup_url:gsub("%${(utcend):yyyyMMddHHmmss%}", end_utc)
+    
+    -- 2. KU9回看模板（酷9最新版）：${(b)yyyyMMddHHmmss|UTC} 和 ${(e)yyyyMMddHHmmss|UTC}
+    catchup_url = catchup_url:gsub("%${%(b%)yyyyMMddHHmmss|UTC%}", start_utc)
+    catchup_url = catchup_url:gsub("%${%(e%)yyyyMMddHHmmss|UTC%}", end_utc)
+    
+    -- 3. APTV回看模板：${(b)yyyyMMddHHmmss:utc} 和 ${(e)yyyyMMddHHmmss:utc}
+    catchup_url = catchup_url:gsub("%${%(b%)yyyyMMddHHmmss:utc%}", start_utc)
+    catchup_url = catchup_url:gsub("%${%(e%)yyyyMMddHHmmss:utc%}", end_utc)
+    
+    return catchup_url
+end
+
 local function format_display_date(time_str)
     local y, m, d, h, min = time_str:match("^(%d%d%d%d)(%d%d)(%d%d)(%d%d)(%d%d)")
     if not y then return "" end
@@ -328,8 +345,7 @@ local function build_channel_epg_items(ch)
             local display_title = prog.display_start .. " " .. prog.title
             if ch.catchup ~= "" and ch.catchup:find("%$%{") and prog.start_utc ~= "" and prog.end_utc ~= "" and prog.start_utc <= now_utc then
                 local catchup_url = ch.catchup
-                catchup_url = catchup_url:gsub("%${%(b%)yyyyMMddHHmmss|UTC%}", prog.start_utc)
-                catchup_url = catchup_url:gsub("%${%(e%)yyyyMMddHHmmss|UTC%}", prog.end_utc)
+                catchup_url = replace_catchup_time_params(catchup_url, prog.start_utc, prog.end_utc)
                 table.insert(epg_items, {
                     title = display_title,
                     value = {"loadfile", catchup_url},

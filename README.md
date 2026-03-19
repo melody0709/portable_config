@@ -6,7 +6,10 @@
 
 - 📺 **频道分组** - 自动解析 M3U 的 `group-title`，按分组展示频道
 - 📋 **EPG 节目单** - 支持 `x-tvg-url` 加载 XMLTV 格式节目单
-- ⏪ **回看功能** - 支持 `catchup-source` 格式，点击节目即可回看
+- ⏪ **回看功能** - 支持多种 `catchup-source` 格式，点击节目即可回看
+  - ✅ 标准回看模板：`${utc:yyyyMMddHHmmss}` 和 `${utcend:yyyyMMddHHmmss}`
+  - ✅ KU9回看模板：`${(b)yyyyMMddHHmmss|UTC}` 和 `${(e)yyyyMMddHHmmss|UTC}`
+  - ✅ APTV回看模板：`${(b)yyyyMMddHHmmss:utc}` 和 `${(e)yyyyMMddHHmmss:utc}`
 - 🎨 **精美界面** - 基于 uosc 的现代化菜单界面
 - ⌨️ **快捷键支持** - F8 打开频道菜单（鼠标右键同样可打开）
 
@@ -42,8 +45,28 @@ portable_config/
   tvg-logo="http://example.com/logo.png" 
   group-title="央视" 
   catchup="default" 
-  catchup-source="http://server/ch{id}?starttime=${(b)yyyyMMddHHmmss|UTC}&endtime=${(e)yyyyMMddHHmmss|UTC}",
+  catchup-source="http://server/ch{id}?starttime=${utc:yyyyMMddHHmmss}&endtime=${utcend:yyyyMMddHHmmss}",
 CCTV-1综合
+http://your-stream-url/playlist.m3u8
+
+#EXTINF:-1 
+  tvg-id="CCTV2" 
+  tvg-name="CCTV-2高清" 
+  tvg-logo="http://example.com/logo.png" 
+  group-title="央视" 
+  catchup="default" 
+  catchup-source="http://server/ch{id}?starttime=${(b)yyyyMMddHHmmss|UTC}&endtime=${(e)yyyyMMddHHmmss|UTC}",
+CCTV-2财经
+http://your-stream-url/playlist.m3u8
+
+#EXTINF:-1 
+  tvg-id="CCTV3" 
+  tvg-name="CCTV-3高清" 
+  tvg-logo="http://example.com/logo.png" 
+  group-title="央视" 
+  catchup="default" 
+  catchup-source="http://server/ch{id}?starttime=${(b)yyyyMMddHHmmss:utc}&endtime=${(e)yyyyMMddHHmmss:utc}",
+CCTV-3综艺
 http://your-stream-url/playlist.m3u8
 ```
 
@@ -163,7 +186,10 @@ epg_download_url=http://your-epg-source.com/epg.xml
 
 1. **检查 `catchup-source` 格式**
 
-   - 必须包含 `${(b)yyyyMMddHHmmss|UTC}` 和 `${(e)yyyyMMddHHmmss|UTC}`
+   - 支持以下三种时间参数格式：
+     - **标准回看模板**: `${utc:yyyyMMddHHmmss}` 和 `${utcend:yyyyMMddHHmmss}`
+     - **KU9回看模板**: `${(b)yyyyMMddHHmmss|UTC}` 和 `${(e)yyyyMMddHHmmss|UTC}`
+     - **APTV回看模板**: `${(b)yyyyMMddHHmmss:utc}` 和 `${(e)yyyyMMddHHmmss:utc}`
 2. **检查时间格式**
 
    - 确保 EPG 中的 `start` 和 `stop` 时间是标准 XMLTV 格式
@@ -185,6 +211,15 @@ epg_download_url=http://your-epg-source.com/epg.xml
    按 `` ` ``（反引号）打开控制台查看错误信息
 
 ## 📝 更新日志
+
+### v5.2 (2026-03-19)
+
+- ✅ **增强回看功能兼容性** - 新增支持三种时间参数格式：
+  - 标准回看模板：`${utc:yyyyMMddHHmmss}` 和 `${utcend:yyyyMMddHHmmss}`
+  - KU9回看模板：`${(b)yyyyMMddHHmmss|UTC}` 和 `${(e)yyyyMMddHHmmss|UTC}`
+  - APTV回看模板：`${(b)yyyyMMddHHmmss:utc}` 和 `${(e)yyyyMMddHHmmss:utc}`
+- ✅ 简化时间参数替换函数，移除调试信息输出
+- ✅ 更新文档，提供完整的时间参数格式说明
 
 ### v5.1 (2026-01-18)
 
