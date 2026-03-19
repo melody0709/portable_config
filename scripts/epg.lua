@@ -286,17 +286,14 @@ local function parse_m3u(path)
             local epg = line:match('x%-tvg%-url="([^"]+)"')
             if epg and state.epg_url == "" then state.epg_url = epg end
         elseif line:match("^#EXTINF") then
+            local comma_name = line:match(",(.*)$")
             current_info = {
                 tvg_id = line:match('tvg%-id="([^"]+)"') or "",
-                name = line:match('tvg%-name="([^"]+)"') or "未知频道",
+                name = comma_name or line:match('tvg%-name="([^"]+)"') or "未知频道",
                 catchup = line:match('catchup%-source="([^"]+)"') or "",
                 group = line:match('group%-title="([^"]+)"') or "其他频道",
                 logo = line:match('tvg%-logo="([^"]+)"') or ""
             }
-            local comma_name = line:match(",(.*)$")
-            if comma_name and current_info.name == "未知频道" then
-                current_info.name = comma_name
-            end
         elseif line:match("^http") or line:match("^rtsp") or line:match("^rtmp") or line:match("^udp") then
             current_info.url = line
             if not state.groups[current_info.group] then
