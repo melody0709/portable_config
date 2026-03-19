@@ -41,7 +41,8 @@ end
 
 ---@param opts? OpenCommandMenuOptions
 function toggle_menu_with_items(opts)
-	if Menu:is_open('menu') then
+	-- 检查是否有任何菜单打开（而不仅仅是 'menu' 类型）
+	if Menu:is_open() then
 		Menu:close()
 	else
 		open_command_menu({type = 'menu', items = get_menu_items(), search_submenus = true}, opts)

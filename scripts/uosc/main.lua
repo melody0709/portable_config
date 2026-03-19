@@ -1081,6 +1081,13 @@ mp.register_script_message('show-submenu', function(id) toggle_menu_with_items({
 mp.register_script_message('show-submenu-blurred', function(id)
 	toggle_menu_with_items({submenu = id, mouse_nav = true})
 end)
+-- 新增：展开子菜单（如果菜单已打开则只展开子菜单，不关闭）
+mp.register_script_message('expand-submenu', function(id)
+	local menu = Menu:is_open()
+	if menu and id then
+		menu:activate_menu(id)
+	end
+end)
 mp.register_script_message('open-menu', function(json, submenu_id)
 	local data = utils.parse_json(json)
 	if type(data) ~= 'table' or type(data.items) ~= 'table' then

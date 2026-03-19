@@ -308,7 +308,8 @@ local function parse_m3u(path)
                 url = line,
                 tvg_id = current_info.tvg_id,
                 catchup = current_info.catchup,
-                logo = current_info.logo
+                logo = current_info.logo,
+                group = current_info.group
             })
             current_info = {}
         end
@@ -364,6 +365,7 @@ local function build_channel_epg_items(ch)
 end
 
 -- 构建主菜单（三级嵌套结构）
+-- 返回值: menu_data, current_group_index, current_channel_index, current_has_epg, current_epg_index
 local function build_main_menu()
     if not state.is_loaded then
         mp.osd_message("请先播放 M3U 文件！", 3)
@@ -371,15 +373,43 @@ local function build_main_menu()
     end
     
     local items = {}
+    local current_group_idx = nil
+    local current_channel_idx = nil
+    local current_has_epg = false
+    local current_epg_idx = nil
     
-    for _, group_name in ipairs(state.group_names) do
+    for group_idx, group_name in ipairs(state.group_names) do
         local channels = state.groups[group_name]
         local channel_items = {}
         
-        for _, ch in ipairs(channels) do
+        for channel_idx, ch in ipairs(channels) do
+            -- 判断是否为当前播放频道
+            local is_current = state.current_channel and state.current_channel.url == ch.url
+            if is_current then
+                current_group_idx = group_idx
+                current_channel_idx = channel_idx
+            end
+            
             -- 判断频道是否有 EPG 数据及回看功能
             local has_epg = state.epg_data[ch.tvg_id] and #state.epg_data[ch.tvg_id] > 0
             local has_catchup = ch.catchup ~= "" and ch.catchup:find("%$%{")
+            
+            if is_current and has_epg then
+                current_has_epg = true
+                -- 找到当前时间点的节目索引
+                local now_utc = current_utc_string()
+                local epg_list = state.epg_data[ch.tvg_id]
+                for i, prog in ipairs(epg_list) do
+                    if prog.start_utc <= now_utc and now_utc <= prog.end_utc then
+                        current_epg_idx = i + 1  -- +1 因为EPG列表第一项是分隔线"节目单"
+                        break
+                    end
+                end
+                -- 如果没找到当前节目，默认选第一个节目（索引2）
+                if not current_epg_idx then
+                    current_epg_idx = 2
+                end
+            end
             
             if has_epg then
                 -- 有EPG数据：同时支持直接播放和 EPG 子菜单
@@ -389,6 +419,7 @@ local function build_main_menu()
                     value = {"loadfile", ch.url},  -- 点击直接播放
                     icon = "live_tv",
                     hint = hint_text,
+                    id = "channel_" .. ch.name,  -- 为频道添加ID
                     items = build_channel_epg_items(ch)  -- 右侧展开 EPG 子菜单
                 })
             else
@@ -396,7 +427,8 @@ local function build_main_menu()
                 table.insert(channel_items, {
                     title = ch.name,
                     value = {"loadfile", ch.url},
-                    icon = "live_tv"
+                    icon = "live_tv",
+                    id = "channel_" .. ch.name  -- 为频道添加ID
                 })
             end
         end
@@ -406,25 +438,60 @@ local function build_main_menu()
             hint = #channels .. " 频道",
             icon = "folder",
             bold = true,
+            id = "group_" .. group_name,
             items = channel_items  -- 嵌套频道列表
         })
     end
     
-    return {
+    local menu_data = {
         type = "iptv_menu",
         title = "IPTV 选台",
         items = items,
         anchor_x = "left",
         anchor_offset = 20
     }
+    
+    return menu_data, current_group_idx, current_channel_idx, current_has_epg, current_epg_idx
 end
 
 -- ==================== 交互命令 ====================
 
 function show_iptv_menu()
-    local menu_data = build_main_menu()
-    if menu_data then
+    local menu_data, current_group_idx, current_channel_idx, current_has_epg, current_epg_idx = build_main_menu()
+    if not menu_data then return end
+    
+    -- 确定要展开的分组ID
+    local submenu_id = nil
+    if state.current_channel and state.current_channel.group then
+        submenu_id = "group_" .. state.current_channel.group
+    elseif #state.group_names > 0 then
+        submenu_id = "group_" .. state.group_names[1]
+    end
+    
+    -- 打开菜单
+    if submenu_id then
+        mp.commandv("script-message-to", "uosc", "open-menu", utils.format_json(menu_data), submenu_id)
+    else
         mp.commandv("script-message-to", "uosc", "open-menu", utils.format_json(menu_data))
+    end
+    
+    -- 如果有当前频道，处理选中/展开逻辑
+    if current_group_idx and current_channel_idx and state.current_channel then
+        -- 延迟一点执行，确保菜单已经渲染
+        mp.add_timeout(0.1, function()
+            if current_has_epg and current_epg_idx then
+                -- 有EPG：展开EPG子菜单，并选中当前时间点的节目
+                local channel_id = "channel_" .. state.current_channel.name
+                mp.commandv("script-message-to", "uosc", "expand-submenu", channel_id)
+                -- 延迟选中当前时间点的节目
+                mp.add_timeout(0.15, function()
+                    mp.commandv("script-message-to", "uosc", "select-menu-item", "iptv_menu", tostring(current_epg_idx), channel_id)
+                end)
+            else
+                -- 无EPG：只选中频道，不展开子菜单，不进入直播
+                mp.commandv("script-message-to", "uosc", "select-menu-item", "iptv_menu", tostring(current_channel_idx), submenu_id)
+            end
+        end)
     end
 end
 
