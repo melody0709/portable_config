@@ -29,6 +29,10 @@ local function xmltv_to_utc(time_str)
     return os.date("!%Y%m%d%H%M%S", t)
 end
 
+local function current_utc_string()
+    return os.date("!%Y%m%d%H%M%S")
+end
+
 local function format_display_date(time_str)
     local y, m, d, h, min = time_str:match("^(%d%d%d%d)(%d%d)(%d%d)(%d%d)(%d%d)")
     if not y then return "" end
@@ -197,9 +201,10 @@ local function build_channel_epg_items(ch)
     table.insert(epg_items, {title = "节目单", selectable = false, muted = true, italic = true})
     
     if epg_list and #epg_list > 0 then
+        local now_utc = current_utc_string()
         for _, prog in ipairs(epg_list) do
             local display_title = prog.display_start .. " " .. prog.title
-            if ch.catchup ~= "" and prog.start_utc ~= "" and prog.end_utc ~= "" then
+            if ch.catchup ~= "" and ch.catchup:find("%$%{") and prog.start_utc ~= "" and prog.end_utc ~= "" and prog.start_utc <= now_utc then
                 local catchup_url = ch.catchup
                 catchup_url = catchup_url:gsub("%${%(b%)yyyyMMddHHmmss|UTC%}", prog.start_utc)
                 catchup_url = catchup_url:gsub("%${%(e%)yyyyMMddHHmmss|UTC%}", prog.end_utc)
@@ -212,8 +217,9 @@ local function build_channel_epg_items(ch)
             else
                 table.insert(epg_items, {
                     title = display_title,
-                    selectable = false,
-                    muted = true
+                    value = {"loadfile", ch.url},
+                    muted = true,
+                    hint = "直播"
                 })
             end
         end
@@ -243,21 +249,22 @@ local function build_main_menu()
         local channel_items = {}
         
         for _, ch in ipairs(channels) do
-            -- 判断频道是否有 EPG 回看功能
+            -- 判断频道是否有 EPG 数据及回看功能
             local has_epg = state.epg_data[ch.tvg_id] and #state.epg_data[ch.tvg_id] > 0
-            local has_catchup = ch.catchup ~= ""
+            local has_catchup = ch.catchup ~= "" and ch.catchup:find("%$%{")
             
-            if has_epg and has_catchup then
-                -- 有回看功能：同时支持直接播放和 EPG 子菜单
+            if has_epg then
+                -- 有EPG数据：同时支持直接播放和 EPG 子菜单
+                local hint_text = has_catchup and "回看▶" or "EPG"
                 table.insert(channel_items, {
                     title = ch.name,
                     value = {"loadfile", ch.url},  -- 点击直接播放
                     icon = "live_tv",
-                    hint = "EPG ▶",
+                    hint = hint_text,
                     items = build_channel_epg_items(ch)  -- 右侧展开 EPG 子菜单
                 })
             else
-                -- 无回看功能：频道直接播放
+                -- 无EPG数据：频道直接播放
                 table.insert(channel_items, {
                     title = ch.name,
                     value = {"loadfile", ch.url},
@@ -328,4 +335,3 @@ end)
 
 mp.msg.info("IPTV 脚本已加载: F8=三级选台菜单 (分组 > 频道 > EPG)")
 
-menu_expand_on_hover=no
