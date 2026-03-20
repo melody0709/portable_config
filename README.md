@@ -1,115 +1,88 @@
 # MPV IPTV Player with EPG & Catch-up
 
-基于 [mpv](https://mpv.io/) + [uosc](https://github.com/tomasklaen/uosc) 5.12（已定制）的 IPTV 播放器，支持 M3U 分组、EPG 节目单和回看功能。
+ 基于 mpv + uosc 5.12（已定制）的 IPTV 播放器，支持：
 
-## ✨ 功能特性
+- M3U 频道分组
+- EPG 节目单（x-tvg-url）
+- 回看（catchup-source）
+- 频道历史记忆（m3u 文件级别）
 
-- 📺 **频道分组** - 自动解析 M3U 的 `group-title`，按分组展示频道
-- 📋 **EPG 节目单** - 支持 `x-tvg-url` 加载 XMLTV 格式节目单
-- ⏪ **回看功能** - 支持多种 `catchup-source` 格式，点击节目即可回看
-  - ✅ 标准回看模板：`${utc:yyyyMMddHHmmss}` 和 `${utcend:yyyyMMddHHmmss}`
-  - ✅ KU9回看模板：`${(b)yyyyMMddHHmmss|UTC}` 和 `${(e)yyyyMMddHHmmss|UTC}`
-  - ✅ APTV回看模板：`${(b)yyyyMMddHHmmss:utc}` 和 `${(e)yyyyMMddHHmmss:utc}`
-- 🎨 **精美界面** - 基于 uosc 的现代化菜单界面
-- ⌨️ **快捷键支持** - F8 打开频道菜单（鼠标右键同样可打开）
+## 快速使用
 
-## 📁 目录结构
+1. 下载 mpv Windows 版（推荐 shinchiro mpv-winbuild）
+2. 把 `portable_config` 放到 下载好的mpv 根目录
+3. 双击 M3U，或命令行：
+   ```bash
+   mpv tv.m3u
+   ```
 
-```
-portable_config/
-├── mpv.conf              # mpv 配置文件
-├── scripts/
-│   ├── epg.lua           # IPTV EPG 主脚本 (本功能核心)
-│   ├── thumbfast.lua     # 缩略图脚本
-│   └── uosc/             # uosc 界面库（已根据本项目定制，默认使用此目录内脚本）
-│       ├── main.lua
-│       └── ...
-├── script-opts/
-│   ├── thumbfast.conf    # 缩略图配置
-│   └── uosc.conf         # uosc 配置
+## 目录说明
 
-```
+- `mpv.conf`：全局 mpv 配置
+- `input.conf`：快捷键
+- `scripts/epg.lua`：IPTV EPG 主脚本
+- `scripts/uosc/`：定制 uosc 组件
+- `script-opts/epg.conf`：EPG 备用 URL 配置
 
-## 🚀 使用方法
+## 核心功能
 
-### 1. 准备 M3U 播放列表
+- 解析 M3U `group-title` 分组、频道
+- 自动加载 `x-tvg-url` EPG（xml/xml.gz）
+- 支持 `catchup-source` 3 种回看模板
+- 支持 `epg_history.json` 记录最后播放频道（每个 m3u）
 
-确保你的 M3U 文件包含以下字段：
+## M3U 模板
 
 ```m3u
-#EXTM3U x-tvg-url="http://your-epg-server/t.xml"
-
-#EXTINF:-1 
-  tvg-id="CCTV1" 
-  tvg-name="CCTV-1高清" 
-  tvg-logo="http://example.com/logo.png" 
-  group-title="央视" 
-  catchup="default" 
-  catchup-source="http://server/ch{id}?starttime=${utc:yyyyMMddHHmmss}&endtime=${utcend:yyyyMMddHHmmss}",
-CCTV-1综合
-http://your-stream-url/playlist.m3u8
-
-#EXTINF:-1 
-  tvg-id="CCTV2" 
-  tvg-name="CCTV-2高清" 
-  tvg-logo="http://example.com/logo.png" 
-  group-title="央视" 
-  catchup="default" 
-  catchup-source="http://server/ch{id}?starttime=${(b)yyyyMMddHHmmss|UTC}&endtime=${(e)yyyyMMddHHmmss|UTC}",
-CCTV-2财经
-http://your-stream-url/playlist.m3u8
-
-#EXTINF:-1 
-  tvg-id="CCTV3" 
-  tvg-name="CCTV-3高清" 
-  tvg-logo="http://example.com/logo.png" 
-  group-title="央视" 
-  catchup="default" 
-  catchup-source="http://server/ch{id}?starttime=${(b)yyyyMMddHHmmss:utc}&endtime=${(e)yyyyMMddHHmmss:utc}",
-CCTV-3综艺
-http://your-stream-url/playlist.m3u8
+ #EXTM3U x-tvg-url="http://your-epg-server/t.xml"
+ #EXTINF:-1 tvg-id="CCTV1" tvg-name="CCTV-1高清" tvg-logo="http://..." group-title="央视" catchup="default" catchup-source="http://server/ch{id}?starttime=${utc:yyyyMMddHHmmss}&endtime=${utcend:yyyyMMddHHmmss}",CCTV-1综合
+ http://your-stream-url/playlist.m3u8
 ```
 
-**关键字段说明：**
+## 字段说明
 
-| 字段               | 说明                        |
-| ------------------ | --------------------------- |
-| `x-tvg-url`      | EPG XML 文件地址            |
-| `tvg-id`         | 频道唯一标识，需与 EPG 匹配 |
-| `group-title`    | 分组名称                    |
-| `catchup-source` | 回看 URL 模板               |
+- `x-tvg-url`：EPG 数据源
+- `tvg-id`：频道 ID（与 EPG channel id 关联）
+- `group-title`：频道分组
+- `catchup-source`：回看 URL 模板
 
-### 2. 打开 M3U 文件
+## 频道历史记录
+
+- 文件位置：`scripts/epg_history.json` 或 `%TEMP%/mpv_epg_epg_history.json`
+- 格式：`{ "path/to/tv.m3u": { "url":"...", "name":"...", "group":"...", "timestamp":123456789 } }`
+- 下次打开同一路径的 m3u 将自动还原上次频道
+
+## 配置示例
+
+ `script-opts/epg.conf`
+
+```ini
+ epg_download_url=http://your-epg-source.com/epg.xml
+```
+
+## 运行日志调试
 
 ```bash
-mpv your-playlist.m3u
+ mpv --msg-level=all=info,epg=trace tv.m3u
 ```
 
-或者用 mpv 打开 M3U 文件后，脚本会自动加载并显示提示：
+ 关注 `epg.lua` 输出：历史记录路径、EPG 下载状态、自动恢复频道
 
-```
-IPTV 已加载！F8:选台
-```
+## 常见问题
 
-### 3. 快捷键操作
+- 无 EPG：确认 `x-tvg-url` 可访问
+- 无回看：检查 `catchup-source` 时间模板
+- 无历史记忆：确认脚本有写权限
 
-| 快捷键 | 功能             |
-| ------ | ---------------- |
-| `F8` | 打开频道分组菜单 |
+## 版本更新
 
-## 📸 界面预览
+- v5.2 (2026-03-20): 新增频道历史记忆、从历史自动恢复
+- v5.1 (2026-01-18): EPG 时间解析修复
+- v5.0 (2026-01-15): 首次发布
 
-### 频道分组菜单
+## 许可证
 
-```
-📁 IPTV 直播源
-├── 📂 央视 (12 频道)
-│   ├── 📺 CCTV-1综合
-│   ├── 📺 CCTV-2财经
-│   └── ...
-├── 📂 卫视 (8 频道)
-└── 📅 查看当前频道节目单（右键菜单）
-```
+ MIT
 
 ### EPG 节目单菜单
 
@@ -125,20 +98,6 @@ IPTV 已加载！F8:选台
 ## ⚙️ 配置说明
 
 ### 脚本配置（epg.lua 内）
-
-如需修改默认行为，可编辑 `scripts/epg.lua`：
-
-```lua
-local state = {
-    m3u_path = "",           -- M3U 文件路径（自动检测）
-    epg_url = "",            -- EPG URL（从 M3U 解析）
-    groups = {},             -- 分组数据
-    group_names = {},        -- 分组名称列表
-    epg_data = {},           -- EPG 节目数据
-    is_loaded = false,       -- 是否已加载
-    current_channel = nil    -- 当前播放频道
-}
-```
 
 ### 快捷键绑定
 
@@ -193,22 +152,6 @@ epg_download_url=http://your-epg-source.com/epg.xml
 2. **检查时间格式**
 
    - 确保 EPG 中的 `start` 和 `stop` 时间是标准 XMLTV 格式
-
-### 菜单不显示
-
-1. **确认 uosc 已正确安装**
-
-   ```
-   scripts/
-   └── uosc/
-       ├── main.lua
-       └── ...
-   ```
-2. **检查 uosc 版本**
-
-   - 本脚本需要 uosc 5.12+ 版本
-3. **查看控制台错误**
-   按 `` ` ``（反引号）打开控制台查看错误信息
 
 ## 📝 更新日志
 
