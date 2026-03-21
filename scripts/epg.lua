@@ -34,43 +34,28 @@ local function trim(s)
 end
 
 -- 获取历史记录文件路径
--- 优先使用 mpv 配置目录，如果不存在则使用 Windows 临时目录
+-- 使用 mpv 配置目录下的 cache 子目录，如果不存在则使用 Windows 临时目录
 local function get_history_file_path()
-    -- 方法1: 使用 mpv 配置目录
-    local config_dir = mp.find_config_file("")
-    if config_dir then
-        -- 移除末尾的目录分隔符
-        config_dir = config_dir:gsub("[\\/]+$", "")
-        local history_path = utils.join_path(config_dir, state.history_file)
-        mp.msg.info("历史记录路径 (mpv配置目录): " .. history_path)
+    -- 使用 expand-path 命令获取 ~~home/cache/ (mpv 配置目录下的 cache)
+    local success, expanded_path = pcall(function()
+        return mp.command_native({"expand-path", "~~home/cache/"})
+    end)
+    if success and expanded_path and expanded_path ~= "" and expanded_path ~= "~~home/cache/" then
+        local cache_dir = expanded_path:gsub("[\\/]+$", "")
+        local history_path = utils.join_path(cache_dir, state.history_file)
+        mp.msg.info("历史记录路径: " .. history_path)
         return history_path
     end
 
-    -- 方法2: 获取 mpv 配置路径
-    local mpv_config = mp.get_property("config-dir", "")
-    if mpv_config and mpv_config ~= "" then
-        local history_path = utils.join_path(mpv_config, state.history_file)
-        mp.msg.info("历史记录路径 (config-dir): " .. history_path)
-        return history_path
-    end
-
-    -- 方法3: 使用 Windows 临时目录
+    -- 备选：使用 Windows 临时目录
     local is_windows = package.config:sub(1,1) == '\\'
     if is_windows then
         local temp_dir = os.getenv("TEMP") or os.getenv("TMP")
         if temp_dir then
             local history_path = utils.join_path(temp_dir, "mpv_epg_" .. state.history_file)
-            mp.msg.info("历史记录路径 (Windows临时目录): " .. history_path)
+            mp.msg.info("历史记录路径 (临时目录): " .. history_path)
             return history_path
         end
-    end
-
-    -- 方法4: 使用脚本目录（最后备选）
-    local script_dir = mp.get_script_directory()
-    if script_dir then
-        local history_path = utils.join_path(script_dir, state.history_file)
-        mp.msg.info("历史记录路径 (脚本目录): " .. history_path)
-        return history_path
     end
 
     -- 最终备选：当前工作目录
@@ -708,10 +693,13 @@ mp.msg.info("IPTV 脚本已加载: 鼠标右键=三级选台菜单 (分组 > 频
 -- 打印调试信息
 mp.msg.info("===== EPG 脚本初始化调试信息 =====")
 mp.msg.info("工作目录: " .. tostring(mp.get_property("working-directory", "未知")))
-mp.msg.info("配置目录: " .. tostring(mp.find_config_file("") or "未找到"))
-mp.msg.info("config-dir: " .. tostring(mp.get_property("config-dir", "未知")))
-mp.msg.info("脚本目录: " .. tostring(mp.get_script_directory() or "未知"))
-mp.msg.info("TEMP 环境变量: " .. tostring(os.getenv("TEMP") or "未设置"))
+-- 获取配置目录路径
+local expanded_home = ""
+local success, home_path = pcall(function()
+    return mp.command_native({"expand-path", "~~home/"})
+end)
+if success then expanded_home = home_path end
+mp.msg.info("配置目录: " .. tostring(expanded_home ~= "" and expanded_home or "未找到"))
 mp.msg.info("==========================")
 
 -- 初始化：加载频道历史记录
