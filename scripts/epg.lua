@@ -236,18 +236,30 @@ local function parse_epg_string(xml_str)
 end
 
 local function get_curl_path()
-    -- 获取脚本所在目录
-    local script_dir = mp.get_script_directory()
-    if not script_dir then return nil end
+    -- 使用 expand-path 获取脚本目录（支持单文件脚本）
+    local success, script_dir = pcall(function()
+        return mp.command_native({"expand-path", "~~home/scripts/"})
+    end)
+    if not success or not script_dir or script_dir == "" or script_dir == "~~home/scripts/" then
+        mp.msg.verbose("无法获取脚本目录，将使用系统 curl")
+        return nil
+    end
+    
     -- 根据平台决定二进制文件名
     local is_windows = package.config:sub(1,1) == '\\'
     local bin_name = is_windows and "curl.exe" or "curl"
     local bin_path = utils.join_path(script_dir, "bin", bin_name)
+    
+    mp.msg.verbose("尝试查找 curl: " .. bin_path)
+    
     local file = io.open(bin_path, "r")
     if file then
         file:close()
+        mp.msg.info("使用本地 curl: " .. bin_path)
         return bin_path
     end
+    
+    mp.msg.verbose("本地 curl 不存在，将使用系统 curl")
     -- 如果不存在，返回nil，让系统自动查找curl
     return nil
 end
@@ -341,9 +353,11 @@ local function fetch_and_parse_epg_async()
     local local_curl = get_curl_path()
     if local_curl then
         table.insert(curl_commands, local_curl)
+        mp.msg.info("使用 curl.exe 下载 EPG")
+    else
+        mp.msg.info("本地 curl 不存在，将使用系统 curl")
     end
     table.insert(curl_commands, "curl")  -- 系统curl
-    
     local function try_next(index)
         if index > #curl_commands then
             mp.msg.error("所有 curl 尝试失败，尝试 PowerShell")
