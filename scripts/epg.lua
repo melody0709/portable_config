@@ -465,11 +465,14 @@ local function parse_m3u(path)
     if last_channel and last_channel.url then
         mp.msg.info("自动播放上次频道: " .. (last_channel.name or "未知"))
         state.auto_playing = true  -- 标记正在自动播放
-        mp.add_timeout(0.5, function()
+        -- 先设置 current_channel，这样菜单能正确识别当前频道
+        state.current_channel = last_channel
+        mp.add_timeout(0.4, function()
             mp.commandv("loadfile", last_channel.url)
             -- 播放命令发送后，延迟清除标记（给路径变化监听器足够时间）
-            mp.add_timeout(1.0, function()
+            mp.add_timeout(1.5, function()
                 state.auto_playing = false
+                mp.msg.info("自动播放标记已清除")
             end)
         end)
     end
@@ -658,20 +661,17 @@ mp.add_key_binding(nil, "show-iptv-menu", show_iptv_menu)
 -- 跟踪当前播放的频道
 mp.observe_property("path", "string", function(name, path)
     if not path then return end
-    -- 跳过自动播放过程中的路径变化
-    if state.auto_playing then
-        mp.msg.verbose("自动播放中，跳过历史记录保存: " .. tostring(path))
-        return
-    end
     for group_name, channels in pairs(state.groups) do
         for _, ch in ipairs(channels) do
             if ch.url == path or (path and path:find(ch.url, 1, true)) then
-                -- 只有当频道真正改变时才保存历史记录
+                -- 只有当频道真正改变时才更新
                 if not state.current_channel or state.current_channel.url ~= ch.url then
                     state.current_channel = ch
                     mp.msg.info("当前频道: " .. ch.name)
-                    -- 保存到历史记录
-                    save_current_channel_to_history()
+                    -- 自动播放时跳过保存历史记录
+                    if not state.auto_playing then
+                        save_current_channel_to_history()
+                    end
                 end
                 return
             end
