@@ -882,7 +882,8 @@ function search_items(items, query, recursive, prefix)
 	for _, item in ipairs(items) do
 		if item.selectable ~= false then
 			local prefixed_title = prefix and prefix .. ' / ' .. (item.title or '') or item.title
-			haystacks[#haystacks + 1] = item.title
+			-- 【修改】优先使用search_key进行搜索（如果存在），用于EPG回看搜索等场景
+			haystacks[#haystacks + 1] = item.search_key or item.title
 			flat_items[#flat_items + 1] = item
 
 			if item.items and recursive then
@@ -903,7 +904,26 @@ function search_items(items, query, recursive, prefix)
 		if item.selectable ~= false and not (item.items and recursive) and not seen[item] then
 			local bold = item.bold or options.font_bold
 			local font_color = item.active and fgt or bgt
-			local ass_safe_title = highlight_match(matched_title, positions, font_color, bold) or nil
+			-- 【修改】使用原始完整标题进行高亮显示，而不是matched_title（search_key）
+			-- 如果item有search_key，需要将匹配位置映射到完整标题中
+			local display_title = item.title or matched_title
+			local ass_safe_title
+			if item.search_key and item.search_key ~= display_title then
+				-- 在search_key中匹配，需要找到search_key在display_title中的位置
+				local search_key_pos = display_title:find(item.search_key, 1, true)
+				if search_key_pos then
+					-- 调整匹配位置到完整标题
+					local adjusted_positions = {}
+					for _, pos in ipairs(positions) do
+						table.insert(adjusted_positions, pos + search_key_pos - 1)
+					end
+					ass_safe_title = highlight_match(display_title, adjusted_positions, font_color, bold) or nil
+				else
+					ass_safe_title = ass_escape(display_title)
+				end
+			else
+				ass_safe_title = highlight_match(display_title, positions, font_color, bold) or nil
+			end
 			local new_item = table_assign({}, item)
 			new_item.title = prefixed_title
 			new_item.ass_safe_title = prefix and prefix .. ' / ' .. (ass_safe_title or '') or ass_safe_title
@@ -1800,40 +1820,43 @@ function Menu:render()
 						icon_rect.ax .. ',' .. icon_rect.ay .. ',' .. icon_rect.bx .. ',' .. icon_rect.by .. ')',
 				})
 
-				-- Query/Placeholder
-				local cursor_height_half, cursor_thickness = round(self.font_size * 0.6), round(self.font_size / 12)
-				local cursor_ax = rect.bx + 1
-				if menu.search.query ~= '' then
-					local opts = {
-						size = self.font_size,
-						color = bgt,
-						wrap = 2,
-						opacity = menu_opacity,
-						clip = '\\clip(' .. icon_rect.bx .. ',' .. rect.ay .. ',' .. rect.bx .. ',' .. rect.by .. ')',
-					}
-					local query, cursor = menu.search.query, menu.search.cursor
-					-- Add a ZWNBSP suffix to prevent libass from trimming trailing spaces
-					local head = ass_escape(string.sub(query, 1, cursor)) .. '\239\187\191'
-					local tail_no_escape = string.sub(query, cursor + 1)
-					local tail = ass_escape(tail_no_escape) .. '\239\187\191'
-					cursor_ax = math.max(round(cursor_ax - text_width(tail_no_escape, opts)), rect.cx)
-					ass:txt(cursor_ax, rect.cy, 6, head, opts)
-					ass:txt(cursor_ax, rect.cy, 4, tail, opts)
-				else
-					local placeholder = (menu.search_style == 'palette' and menu.ass_safe_title)
-						and menu.ass_safe_title
-						or (requires_submit and t('type & ctrl+enter to search') or t('type to search'))
-					ass:txt(rect.bx, rect.cy, 6, placeholder, {
-						size = self.font_size,
-						italic = true,
-						color = bgt,
-						wrap = 2,
-						opacity = menu_opacity * 0.4,
-						clip = '\\clip(' .. rect.ax .. ',' .. rect.ay .. ',' .. rect.bx .. ',' .. rect.by .. ')',
-					})
-				end
-
-				-- Selected input indicator for submittable searches.
+            -- Query/Placeholder
+			local cursor_height_half, cursor_thickness = round(self.font_size * 0.6), round(self.font_size / 12)
+			-- 修复：光标初始位置对齐到搜索图标右侧（左对齐起点）
+			local cursor_ax = icon_rect.bx + self.item_padding
+			if menu.search.query ~= '' then
+				local opts = {
+					size = self.font_size,
+					color = bgt,
+					wrap = 2,
+					opacity = menu_opacity,
+					clip = '\\clip(' .. icon_rect.bx .. ',' .. rect.ay .. ',' .. rect.bx .. ',' .. rect.by .. ')',
+				}
+				local query, cursor = menu.search.query, menu.search.cursor
+				-- Add a ZWNBSP suffix to prevent libass from trimming trailing spaces
+				local head = ass_escape(string.sub(query, 1, cursor)) .. '\239\187\191'
+				local tail_no_escape = string.sub(query, cursor + 1)
+				local tail = ass_escape(tail_no_escape) .. '\239\187\191'
+				-- 修复：计算光标位置 = 起点 + head文本宽度
+				cursor_ax = cursor_ax + text_width(head, opts)
+				-- 左对齐绘制文本
+				local text_x = icon_rect.bx + self.item_padding
+				ass:txt(text_x, rect.cy, 4, head, opts)
+				ass:txt(cursor_ax, rect.cy, 4, tail, opts)
+			else
+				local placeholder = (menu.search_style == 'palette' and menu.ass_safe_title)
+					and menu.ass_safe_title
+					or (requires_submit and t('type & ctrl+enter to search') or t('type to search'))
+				-- 占位符左对齐
+				ass:txt(cursor_ax, rect.cy, 4, placeholder, {
+					size = self.font_size,
+					italic = true,
+					color = bgt,
+					wrap = 2,
+					opacity = menu_opacity * 0.4,
+					clip = '\\clip(' .. cursor_ax .. ',' .. rect.ay .. ',' .. rect.bx .. ',' .. rect.by .. ')',
+				})
+			end				-- Selected input indicator for submittable searches.
 				-- (input is selected when `selected_index` is `nil`)
 				if menu.search_debounce == 'submit' and not menu.selected_index then
 					local size_half = round(1 * state.scale)

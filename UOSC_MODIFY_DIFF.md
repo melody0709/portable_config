@@ -96,7 +96,96 @@ end)
 
 ### 2. `scripts/uosc/elements/Menu.lua`
 
-#### 修改点 1：`activate_selected_item` 方法增强
+#### 修改点 1：搜索框绘制逻辑优化（EPG搜索优化）
+
+**位置：** 约第 1795-1830 行（Query/Placeholder 绘制区域）
+
+**修改原因：**
+1. 光标位置默认在右侧，改为左对齐
+2. 占位符文本改为左对齐显示
+3. 输入文本时从左到右绘制
+
+**修改内容：**
+
+```lua
+-- 【修改】光标初始位置对齐到搜索图标右侧（左对齐起点）
+local cursor_ax = icon_rect.bx + self.item_padding
+if menu.search.query ~= '' then
+    -- ... opts 定义 ...
+    local query, cursor = menu.search.query, menu.search.cursor
+    -- Add a ZWNBSP suffix to prevent libass from trimming trailing spaces
+    local head = ass_escape(string.sub(query, 1, cursor)) .. '\239\187\191'
+    local tail_no_escape = string.sub(query, cursor + 1)
+    local tail = ass_escape(tail_no_escape) .. '\239\187\191'
+    -- 【修改】计算光标位置 = 起点 + head文本宽度
+    cursor_ax = cursor_ax + text_width(head, opts)
+    -- 【修改】左对齐绘制文本
+    local text_x = icon_rect.bx + self.item_padding
+    ass:txt(text_x, rect.cy, 4, head, opts)
+    ass:txt(cursor_ax, rect.cy, 4, tail, opts)
+else
+    -- ... 占位符绘制 ...
+    -- 【修改】光标和占位符都从左侧开始
+    ass:txt(cursor_ax, rect.cy, 4, placeholder, {...})
+end
+```
+
+#### 修改点 2：`search_items` 函数增强（支持 `search_key` 字段）
+
+**位置：** 约第 877-920 行
+
+**修改原因：** EPG 回看搜索需要只匹配节目标题，而不是完整的 "频道 | 时间 | 标题" 字符串
+
+**修改内容：**
+
+1. **构建搜索索引时优先使用 `search_key`：**
+```lua
+for _, item in ipairs(items) do
+    if item.selectable ~= false then
+        local prefixed_title = prefix and prefix .. ' / ' .. (item.title or '') or item.title
+        -- 【修改】优先使用search_key进行搜索（如果存在），用于EPG回看搜索等场景
+        haystacks[#haystacks + 1] = item.search_key or item.title
+        flat_items[#flat_items + 1] = item
+        -- ...
+    end
+end
+```
+
+2. **显示结果时使用完整标题并正确高亮：**
+```lua
+local fuzzy = fzy.filter(query, haystacks, false)
+for _, match in ipairs(fuzzy) do
+    local idx, positions, score = match[1], match[2], match[3]
+    local matched_title = haystacks[idx]
+    local item = flat_items[idx]
+    -- ...
+    -- 【修改】使用原始完整标题进行高亮显示，而不是matched_title（search_key）
+    -- 如果item有search_key，需要将匹配位置映射到完整标题中
+    local display_title = item.title or matched_title
+    local ass_safe_title
+    if item.search_key and item.search_key ~= display_title then
+        -- 在search_key中匹配，需要找到search_key在display_title中的位置
+        local search_key_pos = display_title:find(item.search_key, 1, true)
+        if search_key_pos then
+            -- 调整匹配位置到完整标题
+            local adjusted_positions = {}
+            for _, pos in ipairs(positions) do
+                table.insert(adjusted_positions, pos + search_key_pos - 1)
+            end
+            ass_safe_title = highlight_match(display_title, adjusted_positions, font_color, bold) or nil
+        else
+            ass_safe_title = ass_escape(display_title)
+        end
+    else
+        ass_safe_title = highlight_match(display_title, positions, font_color, bold) or nil
+    end
+    -- ...
+end
+```
+
+**用途：** 实现 EPG 回看搜索功能——搜索时只匹配节目标题，但显示完整信息（频道 | 时间 | 标题）
+
+#### 修改点 3：`activate_selected_item` 方法增强
 
 **位置：** 约第 680-710 行
 
@@ -406,12 +495,13 @@ mp.osd_message("提示信息", 3)  -- 显示3秒
 
 ## 九、版本历史
 
-| 版本 | 日期    | 修改内容                              |
-| ---- | ------- | ------------------------------------- |
-| V1.2 | 2026-03 | 三级滑动菜单结构重构，EPG回看功能完善 |
-| V1.1 | -       | 初始版本，基础 M3U/EPG 支持           |
+| 版本   | 日期       | 修改内容                                                     |
+| ------ | ---------- | ------------------------------------------------------------ |
+| V1.3   | 2026-03-21 | 新增 EPG 回看搜索菜单 (F9)，搜索框光标左对齐优化，`search_key` 支持 |
+| V1.2   | 2026-03-20 | 三级滑动菜单结构重构，新增频道历史记忆，EPG回看功能完善      |
+| V1.1   | -          | 初始版本，基础 M3U/EPG 支持                                  |
 
 ---
 
-*文档生成时间：2026-03-20*
+*文档生成时间：2026-03-21*
 *基于 uosc 5.12.0 定制*

@@ -1,5 +1,5 @@
 --[[
-  mpv + uosc 5.12 IPTV 脚本 V5.2
+  mpv + uosc 5.12 IPTV 脚本 V1.3
   重构：三级滑动菜单结构 - 分组 > 频道 > EPG回看
 ]]
 
@@ -705,6 +705,103 @@ mp.msg.info("==========================")
 
 -- 初始化：加载频道历史记录
 load_channel_history()
+
+-- ==================== EPG 回看搜索菜单 (F9) ====================
+-- 【新增】EPG 回看搜索菜单 (F9) - 搜索所有可回看的节目，按时间倒序排列
+
+-- 构建回看 EPG 搜索菜单（显示所有可回看的节目，按时间倒序排列）
+local function build_catchup_epg_menu()
+    if not state.is_loaded then
+        mp.osd_message("请先播放 M3U 文件！", 3)
+        return nil
+    end
+    
+    local temp_items = {}  -- 临时存储，包含排序键
+    local now_utc = current_utc_string()
+    
+    -- 遍历所有频道组
+    for group_name, channels in pairs(state.groups) do
+        for _, ch in ipairs(channels) do
+            -- 检查频道是否有回看功能
+            local has_catchup = ch.catchup ~= "" and ch.catchup:find("%$%{")
+            if has_catchup then
+                local epg_list = state.epg_data[ch.tvg_id]
+                if epg_list then
+                    for _, prog in ipairs(epg_list) do
+                        -- 只显示过去和当前的节目（可以回看）
+                        if prog.start_utc <= now_utc then
+                            -- 生成回看URL
+                            local catchup_url = ch.catchup
+                            catchup_url = replace_catchup_time_params(catchup_url, prog.start_utc, prog.end_utc)
+                            
+                            -- 格式化显示文本：频道名称 + 时间 + 标题
+                            local display_text = string.format("%s | %s | %s", 
+                                ch.name, prog.display_start, prog.title)
+                            
+                            table.insert(temp_items, {
+                                start_utc = prog.start_utc,
+                                menu_item = {
+                                    title = display_text,
+                                    search_key = prog.title,  -- 只用于搜索的EPG标题
+                                    value = {"loadfile", catchup_url},
+                                    hint = "回看",
+                                    icon = "history"
+                                }
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- 按开始时间倒序排列（最新的在前）
+    table.sort(temp_items, function(a, b)
+        return a.start_utc > b.start_utc  -- 降序排序
+    end)
+    
+    local items = {}
+    for _, temp in ipairs(temp_items) do
+        table.insert(items, temp.menu_item)
+    end
+    
+    local count = #items
+    if count == 0 then
+        table.insert(items, {
+            title = "无可回看的节目",
+            selectable = false,
+            muted = true,
+            italic = true
+        })
+    end
+    
+    local menu_data = {
+        type = "epg_search",
+        title = "EPG 回看搜索 (" .. count .. " 个节目)",
+        items = items,
+        anchor_x = "left",
+        anchor_offset = 20,
+        search = "",              -- 立即激活搜索框
+        search_style = "palette", -- 立即显示搜索框（palette模式）
+        search_submenus = true     -- 启用搜索功能
+    }
+    
+    return menu_data
+end
+
+-- 【新增】显示回看 EPG 搜索菜单
+local function show_epg_search_menu()
+    local menu_data = build_catchup_epg_menu()
+    if not menu_data then return end
+
+    -- 强制启用输入法，解决中文输入法第一个字符输入英文的问题
+    mp.set_property_bool("input-ime", true)
+
+    mp.commandv("script-message-to", "uosc", "open-menu", utils.format_json(menu_data))
+end
+
+-- 绑定 F9 键
+mp.add_key_binding("F9", "show-epg-search-menu", show_epg_search_menu)
 
 -- 强制覆盖鼠标右键绑定，优先于 uosc 的暂停功能
 mp.set_key_bindings({
