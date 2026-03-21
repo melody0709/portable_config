@@ -33,6 +33,134 @@ local function trim(s)
     return s:match("^%s*(.-)%s*$")
 end
 
+-- ==================== EPG 缓存相关函数 ====================
+
+-- 获取缓存目录路径
+local function get_cache_dir()
+    local success, expanded_path = pcall(function()
+        return mp.command_native({"expand-path", "~~home/cache/"})
+    end)
+    if success and expanded_path and expanded_path ~= "" and expanded_path ~= "~~home/cache/" then
+        return expanded_path:gsub("[\\/]+$", "")
+    end
+    -- 备选：使用 Windows 临时目录
+    local is_windows = package.config:sub(1,1) == '\\'
+    if is_windows then
+        local temp_dir = os.getenv("TEMP") or os.getenv("TMP")
+        if temp_dir then
+            return temp_dir
+        end
+    end
+    return nil
+end
+
+-- 简单字符串哈希函数（djb2算法 - Lua 5.1 兼容版）
+local function simple_hash(str)
+    local hash = 5381
+    for i = 1, #str do
+        -- 使用乘法代替位运算: hash << 5 等价于 hash * 32
+        hash = (hash * 32 + hash) + str:byte(i)
+        -- 限制为32位整数（模拟 & 0xFFFFFFFF）
+        hash = hash % 4294967296
+    end
+    -- 转为16进制字符串
+    return string.format("%08x", hash)
+end
+
+-- 获取 EPG 缓存文件路径
+local function get_epg_cache_path()
+    if state.epg_url == "" then return nil end
+    local cache_dir = get_cache_dir()
+    if not cache_dir then return nil end
+    local url_hash = simple_hash(state.epg_url)
+    return utils.join_path(cache_dir, "epg_" .. url_hash .. ".xml")
+end
+
+-- 获取当前周期起始时间（00:02, 07:02, 14:02, 21:02）
+-- 返回该起始时间的 Unix 时间戳（本地时间）
+local function get_current_cycle_start()
+    local now = os.time()
+    local now_table = os.date("*t", now)
+    local current_minutes = now_table.hour * 60 + now_table.min
+    
+    -- 周期起始时间（分钟）：00:02=2, 07:02=422, 14:02=842, 21:02=1262
+    local cycle_starts = {2, 422, 842, 1262}
+    local cycle_start_hour = {0, 7, 14, 21}
+    
+    -- 找到当前所在的周期
+    local current_cycle_idx = 1
+    for i = 2, #cycle_starts do
+        if current_minutes >= cycle_starts[i] then
+            current_cycle_idx = i
+        else
+            break
+        end
+    end
+    
+    -- 构建当前周期起始时间
+    local start_table = {
+        year = now_table.year,
+        month = now_table.month,
+        day = now_table.day,
+        hour = cycle_start_hour[current_cycle_idx],
+        min = 2,
+        sec = 0
+    }
+    
+    return os.time(start_table)
+end
+
+-- 检查缓存是否对应当前周期（缓存修改时间晚于周期起始+2分钟）
+local function is_cache_valid(cache_path)
+    local file = io.open(cache_path, "r")
+    if not file then
+        mp.msg.info("缓存文件不存在: " .. cache_path)
+        return false
+    end
+    file:close()
+    
+    -- 获取文件修改时间
+    local file_info = utils.file_info(cache_path)
+    if not file_info or not file_info.mtime then
+        mp.msg.info("无法获取缓存文件信息: " .. cache_path)
+        return false
+    end
+    
+    local cache_mtime = file_info.mtime
+    local cycle_start = get_current_cycle_start()
+    local valid_after = cycle_start + 120  -- 周期起始后2分钟（00:04, 07:04, 14:04, 21:04）
+    local now = os.time()
+    
+    mp.msg.verbose(string.format("缓存时间检查: 缓存修改=%s, 周期起始=%s, 有效时间=%s, 当前=%s",
+        os.date("%Y-%m-%d %H:%M:%S", cache_mtime),
+        os.date("%Y-%m-%d %H:%M:%S", cycle_start),
+        os.date("%Y-%m-%d %H:%M:%S", valid_after),
+        os.date("%Y-%m-%d %H:%M:%S", now)))
+    
+    if cache_mtime >= valid_after then
+        mp.msg.info("缓存有效: 修改时间 " .. os.date("%H:%M:%S", cache_mtime) .. 
+                    " 晚于当前周期有效时间 " .. os.date("%H:%M:%S", valid_after))
+        return true
+    else
+        mp.msg.info("缓存过期: 修改时间 " .. os.date("%H:%M:%S", cache_mtime) .. 
+                    " 早于当前周期有效时间 " .. os.date("%H:%M:%S", valid_after))
+        return false
+    end
+end
+
+-- 保存 EPG 数据到缓存
+local function save_epg_cache(cache_path, data)
+    if not cache_path or not data then return end
+    local file, err = io.open(cache_path, "wb")
+    if file then
+        file:write(data)
+        file:close()
+        mp.msg.info("EPG 缓存已保存: " .. cache_path .. " (" .. #data .. " 字节)")
+    else
+        mp.msg.warn("无法保存 EPG 缓存: " .. tostring(err))
+    end
+end
+
 -- 获取历史记录文件路径
 -- 使用 mpv 配置目录下的 cache 子目录，如果不存在则使用 Windows 临时目录
 local function get_history_file_path()
@@ -343,10 +471,44 @@ local function decompress_gzip_if_needed(data)
     return data
 end
 
-local function fetch_and_parse_epg_async()
+local function read_file_safe(path)
+    local file = io.open(path, "r")
+    if file then
+        local content = file:read("*a")
+        file:close()
+        return content
+    end
+    local is_windows = package.config:sub(1,1) == '\\'
+    local args = is_windows and {"cmd", "/c", "type", path:gsub("/", "\\")} or {"cat", path}
+    local res = mp.command_native({ name = "subprocess", args = args, capture_stdout = true })
+    if res.status == 0 and res.stdout then return res.stdout end
+    return nil
+end
+
+local function fetch_and_parse_epg_async(force_refresh)
     if state.epg_url == "" then return end
-    mp.osd_message("正在后台下载 EPG 数据...", 3)
-    mp.msg.warn("尝试使用 curl 下载 EPG")
+    
+    local cache_path = get_epg_cache_path()
+    
+    -- 检查是否可以使用缓存
+    if not force_refresh and cache_path then
+        if is_cache_valid(cache_path) then
+            mp.msg.info("使用缓存的 EPG 数据: " .. cache_path)
+            mp.osd_message("正在加载缓存的 EPG 数据...", 2)
+            local cached_data = read_file_safe(cache_path)
+            if cached_data then
+                parse_epg_string(decompress_gzip_if_needed(cached_data))
+                return
+            end
+        else
+            mp.msg.info("缓存过期/不存在，重新下载 EPG")
+        end
+    elseif force_refresh then
+        mp.msg.info("强制刷新：跳过缓存，重新下载 EPG")
+        mp.osd_message("正在强制刷新 EPG 数据...", 3)
+    end
+    
+    mp.msg.info("尝试使用 curl 下载 EPG")
     
     -- 构建可能的curl命令列表：先本地，后系统
     local curl_commands = {}
@@ -373,6 +535,10 @@ local function fetch_and_parse_epg_async()
                 playback_only = false
             }, function(ps_success, ps_res)
                 if ps_success and ps_res.status == 0 and ps_res.stdout then
+                    -- 保存到缓存
+                    if cache_path then
+                        save_epg_cache(cache_path, ps_res.stdout)
+                    end
                     parse_epg_string(decompress_gzip_if_needed(ps_res.stdout))
                 else
                     mp.osd_message("EPG 下载失败", 5)
@@ -391,8 +557,12 @@ local function fetch_and_parse_epg_async()
             playback_only = false
         }, function(success, res, err)
             if success and res.status == 0 and res.stdout and res.stdout ~= "" then
+                -- 保存到缓存
+                if cache_path then
+                    save_epg_cache(cache_path, res.stdout)
+                end
                 parse_epg_string(decompress_gzip_if_needed(res.stdout))
-                mp.msg.warn(" curl 下载 EPG成功")
+                mp.msg.info("curl 下载 EPG 成功")
             else
                 -- 失败，尝试下一个
                 try_next(index + 1)
@@ -403,18 +573,14 @@ local function fetch_and_parse_epg_async()
     try_next(1)
 end
 
-local function read_file_safe(path)
-    local file = io.open(path, "r")
-    if file then
-        local content = file:read("*a")
-        file:close()
-        return content
+-- 强制刷新 EPG（忽略缓存）
+local function force_refresh_epg()
+    if state.epg_url == "" then
+        mp.osd_message("未配置 EPG 下载地址", 3)
+        return
     end
-    local is_windows = package.config:sub(1,1) == '\\'
-    local args = is_windows and {"cmd", "/c", "type", path:gsub("/", "\\")} or {"cat", path}
-    local res = mp.command_native({ name = "subprocess", args = args, capture_stdout = true })
-    if res.status == 0 and res.stdout then return res.stdout end
-    return nil
+    mp.msg.info("手动强制刷新 EPG 数据")
+    fetch_and_parse_epg_async(true)  -- true = 强制刷新
 end
 
 local function parse_m3u(path)
@@ -810,4 +976,7 @@ end
 
 -- 注册脚本绑定 (快捷键在 input.conf 中配置)
 mp.add_key_binding(nil, "show-epg-search-menu", show_epg_search_menu)
+
+-- 注册强制刷新 EPG 快捷键 (Shift+F9)
+mp.add_key_binding(nil, "force-refresh-epg", force_refresh_epg)
 
