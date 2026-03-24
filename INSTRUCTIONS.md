@@ -223,8 +223,8 @@ mp.commandv("script-message-to", "uosc", "select-menu-item", menu_type, index, p
 ## 版本信息
 
 - **基础版本**：uosc 5.12.0
-- **IPTV 版本**：V1.6.3（2026-03-23）
-- **最后更新**：2026-03-23
+- **IPTV 版本**：V1.6.4（2026-03-24）
+- **最后更新**：2026-03-24
 
 ## 相关文档
 

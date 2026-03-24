@@ -1,5 +1,14 @@
 # Changelog
 
+## V1.6.4 - 2026-03-24
+
+- 合并 `path` 双监听为单监听，修复 M3U 初始加载与频道历史跟踪的顺序冲突，减少首台闪切
+- 回看续播改为纯 `end-file` 事件驱动，移除轮询定时器与续播后 `seek` 流程
+- 回看续播时间链路调整为：`next_start = start_utc + duration`，`next_end = next_start + 5h`
+- 新增回看时长缓存：解决 `end-file` 时 `duration=nil` 导致无法推算下一段起点的问题
+- 增强回看 URL 查询参数覆盖：统一重写 `starttime/endtime` 及常见运营商字段（含 `ztestarttime/zteendtime`）
+- 新增回看续播调试日志，便于定位 `next_start/new_url` 生成过程
+
 ## V1.6.3 - 2026-03-23
 
 - 修复菜单横向抖动：分组/日期桶展开与返回父级全部改为无横向动画切换
