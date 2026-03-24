@@ -11,6 +11,32 @@
 
 ### 1. `scripts/uosc/main.lua`
 
+#### 修改点 0：`prev` / `next` 按钮支持 IPTV 组内切台
+
+**位置：** 约第 960-980 行（`bind_command('next'/'prev')` 区域）
+
+**修改原因：** 底部控制栏的上一项/下一项按钮原本只会切换 mpv 播放列表，对本项目的 M3U 分组直播不符合预期；需要在 IPTV 播放时复用 `epg` 脚本已有的组内切台逻辑。
+
+**修改内容：**
+
+```lua
+-- 【新增】IPTV 播放时让 uosc 上一项/下一项按钮改走 epg 组内切台，普通文件保持原行为
+local function navigate_item_or_iptv_group(direction)
+    if mp.get_property_native('user-data/epg/is_iptv_active') then
+        local message = direction > 0 and 'channel-group-next' or 'channel-group-prev'
+        mp.commandv('script-message-to', 'epg', message)
+        return
+    end
+
+    navigate_item(direction)
+end
+
+bind_command('next', function() navigate_item_or_iptv_group(1) end)
+bind_command('prev', function() navigate_item_or_iptv_group(-1) end)
+```
+
+**用途：** 让 `uosc` 底部左右切换按钮在直播 M3U 场景下与 `PgUp` / `PgDn`、鼠标点选频道保持一致，都只在当前分组内前后切台；普通本地文件/普通播放列表仍保持原始 `uosc` 行为。
+
 #### 修改点 1：新增消息处理器 `expand-submenu`
 
 **位置：** 文件末尾消息处理器区域

@@ -79,7 +79,7 @@ function play_live_channel(channel, show_osd, group_name, channel_index)
         return false
     end
 
-    state.current_catchup = nil
+    set_current_catchup_state(nil, nil)
 
     if group_name and channel_index then
         set_selected_channel_position(group_name, channel_index)
@@ -89,7 +89,7 @@ function play_live_channel(channel, show_osd, group_name, channel_index)
     end
 
     local channel_changed = not state.current_channel or state.current_channel.url ~= channel.url
-    state.current_channel = channel
+    set_current_channel_state(channel)
 
     if channel_changed then
         mp.msg.info("当前频道: " .. channel.name)

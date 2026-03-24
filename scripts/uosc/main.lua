@@ -962,8 +962,20 @@ bind_command('items', function()
 		mp.command('script-binding uosc/open-file')
 	end
 end)
-bind_command('next', function() navigate_item(1) end)
-bind_command('prev', function() navigate_item(-1) end)
+-- 【新增】IPTV 播放时让 uosc 上一项/下一项按钮改走 epg 组内切台，普通文件保持原行为
+local function navigate_item_or_iptv_group(direction)
+	if mp.get_property_native('user-data/epg/is_iptv_active') then
+		local message = direction > 0 and 'channel-group-next' or 'channel-group-prev'
+		mp.commandv('script-message-to', 'epg', message)
+		return
+	end
+
+	navigate_item(direction)
+end
+
+-- 【修改】上一项/下一项按钮在 IPTV 场景下切换当前分组内频道，而不是切换 mpv 播放列表项
+bind_command('next', function() navigate_item_or_iptv_group(1) end)
+bind_command('prev', function() navigate_item_or_iptv_group(-1) end)
 bind_command('next-file', function() navigate_directory(1) end)
 bind_command('prev-file', function() navigate_directory(-1) end)
 bind_command('first', function()

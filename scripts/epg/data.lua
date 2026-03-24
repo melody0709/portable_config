@@ -612,6 +612,8 @@ function parse_m3u(path)
     channel_search_cache = {}
     state.selected_group_name = nil
     state.selected_channel_index = nil
+    set_current_channel_state(nil)
+    set_current_catchup_state(nil, nil)
     state.epg_url = trim(options.epg_download_url)
     if state.epg_url ~= "" then
         mp.msg.info("使用配置的 EPG 下载连接: " .. state.epg_url)
@@ -657,7 +659,7 @@ function parse_m3u(path)
         local last_group_name, last_channel_index = find_channel_position_by_url(last_channel.url)
         local resolved_channel = set_selected_channel_position(last_group_name, last_channel_index) or last_channel
         -- 先设置 current_channel，这样菜单能正确识别当前频道
-        state.current_channel = resolved_channel
+        set_current_channel_state(resolved_channel)
         load_iptv_url(last_channel.url, "history-resume")
         -- 播放命令发送后，延迟清除标记（给路径变化监听器足够时间）
         mp.add_timeout(1.5, function()
@@ -835,11 +837,13 @@ function set_selected_channel_position(group_name, channel_index)
     if not channels or not channel_index or not channels[channel_index] then
         state.selected_group_name = nil
         state.selected_channel_index = nil
+        sync_iptv_button_state()
         return nil
     end
 
     state.selected_group_name = group_name
     state.selected_channel_index = channel_index
+    sync_iptv_button_state()
     return channels[channel_index]
 end
 
