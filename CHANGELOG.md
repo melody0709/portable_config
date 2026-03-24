@@ -7,6 +7,7 @@
 - 回看续播时间链路调整为：`next_start = start_utc + duration`，`next_end = next_start + 5h`
 - 新增回看时长缓存：解决 `end-file` 时 `duration=nil` 导致无法推算下一段起点的问题
 - 新增回看续播调试日志，便于定位 `next_start/new_url` 生成过程
+- 修复四级菜单自动定位在长频道列表中的失效：先滚动到当前频道，再展开日期桶并选中当前回看对应 EPG
 
 ## V1.6.3 - 2026-03-23
 

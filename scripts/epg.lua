@@ -1727,15 +1727,23 @@ function show_iptv_menu()
             if current_has_epg and current_bucket_id then
                 -- 有EPG：展开频道 -> 日期桶 -> 当前节目
                 local channel_id = "channel_" .. menu_active_channel.name
-                mp.commandv("script-message-to", "uosc", "expand-submenu", channel_id)
 
-                mp.add_timeout(0.01, function()
-                    mp.commandv("script-message-to", "uosc", "expand-submenu", current_bucket_id)
-                    if current_epg_idx then
-                        mp.add_timeout(0.01, function()
-                            mp.commandv("script-message-to", "uosc", "select-menu-item", "iptv_menu", tostring(current_epg_idx), current_bucket_id)
-                        end)
-                    end
+                -- 长频道列表场景下，先选中频道触发滚动，再展开四级菜单，避免目标项未渲染导致定位失败。
+                if submenu_id then
+                    mp.commandv("script-message-to", "uosc", "select-menu-item", "iptv_menu", tostring(current_channel_idx), submenu_id)
+                end
+
+                mp.add_timeout(0.03, function()
+                    mp.commandv("script-message-to", "uosc", "expand-submenu", channel_id)
+
+                    mp.add_timeout(0.02, function()
+                        mp.commandv("script-message-to", "uosc", "expand-submenu", current_bucket_id)
+                        if current_epg_idx then
+                            mp.add_timeout(0.02, function()
+                                mp.commandv("script-message-to", "uosc", "select-menu-item", "iptv_menu", tostring(current_epg_idx), current_bucket_id)
+                            end)
+                        end
+                    end)
                 end)
             else
                 -- 无EPG：只选中频道，不展开子菜单，不进入直播
