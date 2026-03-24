@@ -15,6 +15,7 @@ function TopBar:init()
 	self.icon_size, self.font_size, self.title_by = 1, 1, 1
 	self.show_alt_as_main = false
 	self.main_title, self.alt_title = nil, nil
+	self.iptv_context_title = nil
 	---@type table<string, string|nil>
 	self.render_titles = {}
 	---@type {index: number; title: string}|nil
@@ -56,6 +57,26 @@ function TopBar:add_template_listener(template, callback)
 end
 
 function TopBar:register_observers()
+	local function update_iptv_context_title()
+		local is_iptv_active = mp.get_property_native('user-data/epg/is_iptv_active')
+		local group_name = mp.get_property_native('user-data/epg/current_group_name')
+		local channel_name = mp.get_property_native('user-data/epg/current_channel_name')
+
+		if is_iptv_active and group_name and group_name ~= '' and channel_name and channel_name ~= '' then
+			self.iptv_context_title = ass_escape(group_name .. ' > ' .. channel_name)
+		elseif is_iptv_active and channel_name and channel_name ~= '' then
+			self.iptv_context_title = ass_escape(channel_name)
+		else
+			self.iptv_context_title = nil
+		end
+
+		self:update_render_titles()
+	end
+
+	self:observe_mp_property('user-data/epg/is_iptv_active', 'native', update_iptv_context_title)
+	self:observe_mp_property('user-data/epg/current_group_name', 'native', update_iptv_context_title)
+	self:observe_mp_property('user-data/epg/current_channel_name', 'native', update_iptv_context_title)
+
 	-- Main title
 	if #options.top_bar_title > 0 and options.top_bar_title ~= 'no' then
 		if options.top_bar_title == 'yes' then
@@ -131,6 +152,17 @@ function TopBar:update_render_titles()
 
 	if self.show_alt_as_main and alt and alt ~= '' then
 		main, alt = alt, nil
+	end
+
+	-- 【修改】IPTV 场景下将频道组与频道名直接拼接到原始标题/地址后方，保持单行显示
+	if self.iptv_context_title then
+		if main and main ~= '' then
+			main = main .. string.rep(' ', 4) .. self.iptv_context_title
+		elseif alt and alt ~= '' then
+			alt = alt .. string.rep(' ', 4) .. self.iptv_context_title
+		else
+			main = self.iptv_context_title
+		end
 	end
 
 	self.render_titles.main, self.render_titles.alt = main, alt

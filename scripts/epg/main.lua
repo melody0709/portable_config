@@ -1,5 +1,5 @@
 --[[
-                mpv + uosc 5.12 IPTV 脚本 V1.7.1
+                mpv + uosc 5.12 IPTV 脚本 V1.7.2
     重构：四级滑动菜单结构 - 分组 > 频道 > 日期桶 > EPG
     模块化版本：main.lua 入口 + utils / data / playback / menu 子模块
 ]]
@@ -99,11 +99,15 @@ function sync_iptv_button_state()
         and (current_path == current_catchup_path or current_path:find(current_catchup_path, 1, true))
     local is_local_m3u = normalized_path and state.m3u_path ~= "" and normalized_path == state.m3u_path
     local is_iptv_active = is_live_channel or is_catchup_channel or is_local_m3u or false
+    local current_group_name = state.current_channel and state.current_channel.group or state.selected_group_name
+    local current_channel_name = state.current_channel and state.current_channel.name or nil
 
     mp.set_property_native("user-data/epg/is_iptv_active", is_iptv_active)
     mp.set_property_native("user-data/epg/is_catchup", state.current_catchup ~= nil)
     mp.set_property_native("user-data/epg/selected_group_name", state.selected_group_name)
     mp.set_property_native("user-data/epg/selected_channel_index", state.selected_channel_index)
+    mp.set_property_native("user-data/epg/current_group_name", current_group_name)
+    mp.set_property_native("user-data/epg/current_channel_name", current_channel_name)
 end
 
 function set_current_catchup_state(catchup_context, playback_url)

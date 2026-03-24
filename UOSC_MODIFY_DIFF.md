@@ -398,6 +398,35 @@ self:search_query_insert(key_text, menu.id)
 
 ---
 
+### 2.5 `scripts/uosc/elements/TopBar.lua`
+
+#### 修改点 0：顶部悬浮标题同一行追加 IPTV 频道组与频道名
+
+**位置：** 约第 10-140 行（`TopBar:init` / `register_observers` / `update_render_titles`）
+
+**修改原因：** 当前顶部悬浮标题在 IPTV 场景下主要显示播放地址，定位频道不直观；需要在保留原有地址/标题的同时，将当前频道组和频道名直接拼接到同一行，避免竖向堆叠。
+
+**修改内容：**
+
+```lua
+-- 【新增】监听 epg 透出的 IPTV 上下文，并在顶部标题同一行追加“组名 > 频道名”
+self:observe_mp_property('user-data/epg/is_iptv_active', 'native', update_iptv_context_title)
+self:observe_mp_property('user-data/epg/current_group_name', 'native', update_iptv_context_title)
+self:observe_mp_property('user-data/epg/current_channel_name', 'native', update_iptv_context_title)
+
+if self.iptv_context_title then
+    if main and main ~= '' then
+        main = main .. string.rep(' ', 4) .. self.iptv_context_title
+    elseif alt and alt ~= '' then
+        alt = alt .. string.rep(' ', 4) .. self.iptv_context_title
+    else
+        main = self.iptv_context_title
+    end
+end
+```
+
+**用途：** 鼠标移动到视频顶部时，`uosc` 顶栏仍显示原本的播放地址/标题，并在同一行后方以额外空格分隔显示当前直播频道所在分组与频道名，便于快速确认正在看的台。
+
 ### 3. `scripts/uosc/lib/menus.lua`
 
 #### 修改点 1：`toggle_menu_with_items` 函数增强
