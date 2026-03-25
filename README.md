@@ -129,7 +129,6 @@ portable_config/
  epg_cache_refresh_start=00:04
  epg_cache_refresh_interval_hours=7
  catchup_preload_seconds=15
- catchup_overlap_skip_seconds=0.5
 ```
 
 ## 运行日志调试
@@ -174,10 +173,6 @@ epg_cache_refresh_interval_hours=7
 # 当当前回看片段距离结束还剩这么多秒时，提前排队下一段 URL
 catchup_preload_seconds=15
 
-# 回看边界重叠补偿（秒）
-# 打开下一段时，从该片段开头向后偏移这么多秒开始播放，用于跳过边界重复
-catchup_overlap_skip_seconds=0.5
-
 # IPTV 菜单 UI 配置（0=沿用 uosc.conf）
 menu_subtitle_font_size=0
 menu_level1_min_width=0
@@ -192,7 +187,6 @@ menu_level4_min_width=0
 - `menu_level3_min_width`：三级菜单（日期桶）最小宽度
 - `menu_level4_min_width`：四级菜单（EPG）最小宽度
 - `catchup_preload_seconds`：回看片段剩余多少秒时，提前把下一段插入播放列表；默认 `15`
-- `catchup_overlap_skip_seconds`：打开下一段时，从该片段开头向后偏移多少秒开始播放，用于跳过边界重复；默认 `0.5`
 
 ### EPG 缓存刷新规则
 
@@ -270,7 +264,7 @@ menu_level4_min_width=0
 ## 版本信息
 
 - **基础版本**：uosc 5.12.0
-- **IPTV 版本**：V1.7.3（2026-03-25）
+- **IPTV 版本**：V1.7.4（2026-03-25）
 - **最后更新**：2026-03-25
 
 ## 🤝 致谢

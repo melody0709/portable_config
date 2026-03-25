@@ -1,5 +1,5 @@
 --[[
-                mpv + uosc 5.12 IPTV 脚本 V1.7.3
+                mpv + uosc 5.12 IPTV 脚本 V1.7.4
     重构：四级滑动菜单结构 - 分组 > 频道 > 日期桶 > EPG
     模块化版本：main.lua 入口 + utils / data / playback / menu 子模块
 ]]
@@ -15,7 +15,6 @@ options = {
     epg_cache_refresh_start = "00:04",
     epg_cache_refresh_interval_hours = 7,
     catchup_preload_seconds = 15,
-    catchup_overlap_skip_seconds = 0.5,
     menu_subtitle_font_size = 0,
     menu_level1_min_width = 0,
     menu_level2_min_width = 0,
@@ -142,20 +141,6 @@ end
 function set_current_channel_state(channel)
     state.current_channel = channel
     sync_iptv_button_state()
-end
-
-local function get_catchup_overlap_load_options()
-    local skip_seconds = tonumber(options.catchup_overlap_skip_seconds) or 0
-    if skip_seconds <= 0 then
-        return nil, nil
-    end
-
-    local normalized_skip = string.format("%.3f", skip_seconds):gsub("0+$", ""):gsub("%.$", "")
-    if normalized_skip == "" or normalized_skip == "0" then
-        return nil, nil
-    end
-
-    return {start = normalized_skip}, normalized_skip
 end
 
 -- ==================== 加载子模块 ====================
@@ -309,13 +294,11 @@ mp.observe_property("duration", "number", function(name, duration)
 end)
 
 mp.observe_property("time-pos", "number", function(name, time_pos)
-    if not state.current_catchup then return end
+    if not state.current_catchup or state.next_catchup_queued then return end
     if not time_pos or time_pos < 0 then return end
 
     local duration = mp.get_property_number("duration") or state.current_catchup.last_duration
     if not duration or duration <= 0 then return end
-
-    if state.next_catchup_queued then return end
 
     local preload_seconds = tonumber(options.catchup_preload_seconds) or 15
     if preload_seconds < 1 then preload_seconds = 1 end
@@ -342,22 +325,15 @@ mp.observe_property("time-pos", "number", function(name, time_pos)
         catchup_template = cc.catchup_template,
         start_utc = next_start_utc,
         last_end_utc = next_end_utc,
-        last_duration = nil,
-        overlap_skip_seconds = skip_text
+        last_duration = nil
     }
 
-    local load_options, skip_text = get_catchup_overlap_load_options()
-
-    if not load_iptv_url(new_url, "catchup-preload", false, false, "insert-next", load_options) then
+    if not load_iptv_url(new_url, "catchup-preload", false, false, "insert-next") then
         return
     end
 
     set_queued_catchup_state(queued_context, new_url)
-    if skip_text then
-        mp.msg.info(string.format("回看预加载: 已提前排队下一段 start=%s end=%s overlap_skip=%s 秒", next_start_utc, next_end_utc, skip_text))
-    else
-        mp.msg.info(string.format("回看预加载: 已提前排队下一段 start=%s end=%s", next_start_utc, next_end_utc))
-    end
+    mp.msg.info(string.format("回看预加载: 已提前排队下一段 start=%s end=%s", next_start_utc, next_end_utc))
 end)
 
 local function try_activate_queued_catchup_state()
@@ -378,11 +354,7 @@ local function try_activate_queued_catchup_state()
     local queued_path = state.queued_catchup_path
     clear_queued_catchup_state()
     set_current_catchup_state(queued_context, queued_path)
-    if queued_context.overlap_skip_seconds then
-        mp.msg.info(string.format("回看预加载: 已切换到预排队片段 start=%s overlap_skip=%s 秒", tostring(queued_context.start_utc), tostring(queued_context.overlap_skip_seconds)))
-    else
-        mp.msg.info(string.format("回看预加载: 已切换到预排队片段 start=%s", tostring(queued_context.start_utc)))
-    end
+    mp.msg.info(string.format("回看预加载: 已切换到预排队片段 start=%s", tostring(queued_context.start_utc)))
     return true
 end
 
@@ -415,11 +387,7 @@ mp.register_event("end-file", function(event)
     if not state.current_catchup then return end
 
     if state.next_catchup_queued and state.queued_catchup then
-        if state.queued_catchup.overlap_skip_seconds then
-            mp.msg.info(string.format("回看续播预加载: 当前片段结束，交由已排队下一段继续播放 overlap_skip=%s 秒", tostring(state.queued_catchup.overlap_skip_seconds)))
-        else
-            mp.msg.info("回看续播预加载: 当前片段结束，交由已排队下一段继续播放")
-        end
+        mp.msg.info("回看续播预加载: 当前片段结束，交由已排队下一段继续播放")
         return
     end
 
@@ -454,25 +422,12 @@ mp.register_event("end-file", function(event)
     cc.start_utc = next_start_utc
     cc.last_end_utc = next_end_utc
     set_current_catchup_state(cc, new_url)
-
-    local load_options, skip_text = get_catchup_overlap_load_options()
-    if skip_text then
-        mp.msg.info(string.format("回看续播: 对下一段应用 overlap_skip=%s 秒", skip_text))
-    end
-    load_iptv_url(new_url, "catchup-resume", false, false, "replace", load_options)
+    load_iptv_url(new_url, "catchup-resume", false)
 end)
 
 -- ==================== 初始化 ====================
 
 mp.msg.info("IPTV 脚本已加载: 鼠标右键=四级选台菜单 (分组 > 频道 > 日期桶 > EPG)")
-do
-    local _, skip_text = get_catchup_overlap_load_options()
-    if skip_text then
-        mp.msg.info(string.format("回看边界重叠补偿已启用: overlap_skip=%s 秒", skip_text))
-    else
-        mp.msg.info("回看边界重叠补偿已禁用")
-    end
-end
 mp.msg.info("===== EPG 脚本初始化调试信息 =====")
 mp.msg.info("工作目录: " .. tostring(mp.get_property("working-directory", "未知")))
 
