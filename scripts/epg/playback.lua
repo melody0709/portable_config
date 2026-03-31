@@ -62,7 +62,11 @@ function should_force_hls_for_iptv_url(url)
         or path:match("%.aac$")
         or path:match("%.ogg$")
         or path:match("%.opus$")
-        or path:match("%.wav$") then
+        or path:match("%.wav$") 
+        or path:match("%.php$")  -- ★ 新增：PHP 动态脚本不强制 HLS
+        or path:match("%.jsp$")  -- ★ 新增：JSP 动态脚本
+        or path:match("%.asp$")  -- ★ 新增：ASP 动态脚本
+        then
         return false
     end
 
