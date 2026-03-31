@@ -52,6 +52,7 @@ state = {
     current_time_pos = 0,
     pending_hls_retry = nil,
     pending_hls_retry_timer = nil,
+    known_hls_urls = {},
     last_iptv_menu_data = nil,
     is_subscription_mode = false,
     subscription_url = "",
@@ -451,6 +452,9 @@ end)
 
 mp.register_event("shutdown", function()
     flush_channel_history()
+    if state.history_dirty then
+        save_hls_force_cache()
+    end
 end)
 
 -- end-file 事件驱动回看续播
@@ -459,6 +463,13 @@ mp.register_event("end-file", function(event)
         local retry = state.pending_hls_retry
         state.pending_hls_retry = nil
         cancel_pending_hls_retry_timer()
+
+        if not state.known_hls_urls[retry.url] then
+            state.known_hls_urls[retry.url] = true
+            save_hls_force_cache()
+            mp.msg.info("已将此 URL 加入 HLS 强制缓存字典")
+        end
+
         state.pending_hls_retry_timer = mp.add_timeout(HLS_RETRY_DELAY, function()
             state.pending_hls_retry_timer = nil
 
@@ -537,6 +548,7 @@ mp.msg.info("配置目录: " .. tostring(expanded_home ~= "" and expanded_home o
 mp.msg.info("==========================")
 
 load_channel_history()
+load_hls_force_cache()
 sync_iptv_button_state()
 
 mp.add_timeout(0.2, function()

@@ -79,11 +79,20 @@ function load_iptv_url(url, context, allow_hls_retry, force_hls, load_mode, file
 
     cancel_pending_hls_retry_timer()
 
+    if state.known_hls_urls and state.known_hls_urls[playback_url] then
+        force_hls = true
+        mp.msg.info("命中 HLS 缓存，直接使用 HLS 模式: " .. playback_url)
+    end
+
     if force_hls then
         state.pending_hls_retry = nil
         local hls_options = clone_load_options(file_options) or {}
         hls_options["demuxer-lavf-format"] = "hls"
-        mp.msg.info(string.format("IPTV HLS兼容: %s 默认打开失败，改用 HLS 重试 %s", context or "unknown", playback_url))
+        if state.known_hls_urls and state.known_hls_urls[playback_url] then
+            mp.msg.info(string.format("IPTV HLS加速: %s %s", context or "unknown", playback_url))
+        else
+            mp.msg.info(string.format("IPTV HLS兼容: %s 默认打开失败，改用 HLS 重试 %s", context or "unknown", playback_url))
+        end
         dispatch_loadfile(playback_url, effective_mode, hls_options)
         return true
     end

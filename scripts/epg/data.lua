@@ -1213,3 +1213,37 @@ function get_menu_active_channel()
 
     return state.current_channel
 end
+
+-- ==================== HLS 强制缓存 ====================
+
+function get_hls_cache_file_path()
+    local history_path = get_history_file_path()
+    if history_path then
+        return history_path:gsub("epg_history%.json", "hls_force_cache.json")
+    end
+    return "hls_force_cache.json"
+end
+
+function load_hls_force_cache()
+    state.known_hls_urls = {}
+    local path = get_hls_cache_file_path()
+    local file = io.open(path, "r")
+    if file then
+        local content = file:read("*a")
+        file:close()
+        local success, data = pcall(utils.parse_json, content)
+        if success and type(data) == "table" then
+            state.known_hls_urls = data
+            mp.msg.info("HLS 强制缓存已加载，共 " .. #data .. " 条记录")
+        end
+    end
+end
+
+function save_hls_force_cache()
+    local path = get_hls_cache_file_path()
+    local file = io.open(path, "w")
+    if file then
+        file:write(utils.format_json(state.known_hls_urls))
+        file:close()
+    end
+end
